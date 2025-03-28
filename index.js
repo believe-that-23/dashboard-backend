@@ -14,6 +14,7 @@ const ZOHO_API = process.env.ZOHO_API;
 var fs = require('fs');
 var path = require('path');
 var express = require('express');
+const cors = require('cors');
 var bodyParser = require('body-parser');
 var errorHandler = require('errorhandler');
 var morgan = require('morgan');
@@ -25,12 +26,14 @@ const { send } = require('process');
 const { fetchAds } = require('./googleAds');
 
 
+
 process.env.PWD = process.env.PWD || process.cwd();
 
 
 var expressApp = express();
 var port = process.env.PORT || 5000;
 
+expressApp.use(cors());
 expressApp.set('port', port);
 expressApp.use(morgan('dev'));
 expressApp.use(bodyParser.json());
