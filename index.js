@@ -159,7 +159,7 @@ expressApp.get('/app/leads/:startDate/:endDate', async function (req, res) {
     const meetingsData = labels.map(date => dateMap[date].meetings_done);
     const qualifiedData = labels.map(date => dateMap[date].qualified);
     const leadsData = labels.map(date => dateMap[date].leads_count);
-
+    const convertedData = labels.map(date => dateMap[date].converted || 0);
 
     let cpl = 0;
     if (leads_count > 0) {
@@ -198,7 +198,8 @@ expressApp.get('/app/leads/:startDate/:endDate', async function (req, res) {
         budgetData,
         meetingsData,
         qualifiedData,
-        leadsData
+        leadsData,
+        convertedData
     }
 
     res.json(sendData);
