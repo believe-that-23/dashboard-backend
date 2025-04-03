@@ -2,7 +2,7 @@ const axios = require('axios');
 const { getAccessToken } = require('./google_ads');
 
 
-async function fetchAds() {
+async function fetchAds(startDate, endDate) {
     try {
         const accessToken = await getAccessToken();
         const developerToken = process.env.DEVELOPER_TOKEN;
