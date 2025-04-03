@@ -19,7 +19,7 @@ async function fetchAds() {
                     metrics.clicks,
                     metrics.cost_micros
                 FROM ad_group_ad
-                WHERE segments.date DURING LAST_30_DAYS
+                WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
                 AND ad_group_ad.status != 'REMOVED'
                 ORDER BY segments.date DESC`
             },
@@ -47,4 +47,4 @@ async function fetchAds() {
     }
 }
 
-module.exports = {fetchAds};
+module.exports = { fetchAds };

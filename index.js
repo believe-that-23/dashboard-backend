@@ -84,7 +84,7 @@ expressApp.get('/app/leads/:startDate/:endDate', async function (req, res) {
   let leads_count_facebook = 0;
   let converted_facebook = 0;
 
-  const googleAds = await fetchAds();
+  const googleAds = await fetchAds(req.params.startDate, req.params.endDate);
 
   for (let x of leads) {
     const lead_date = new Date(x.date);
