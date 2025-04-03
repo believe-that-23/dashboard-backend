@@ -89,7 +89,7 @@ expressApp.get('/app/leads/:startDate/:endDate', async function (req, res) {
   for (let x of leads) {
     const lead_date = new Date(x.date);
     const dateStr = lead_date.toISOString().split('T')[0];
-    if (start <= lead_date && end >= lead_date) {
+    if (start <= lead_date && lead_date <= end) {
       if (x.source === 'Google AdWords') {
         if (!dateMap[dateStr]) {
           dateMap[dateStr] = {
