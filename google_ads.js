@@ -1,8 +1,7 @@
-
-
-
 const { GoogleAdsApi } = require('google-ads-api');
 const axios = require('axios')
+
+
 
 let accessToken = null;
 let tokenExpiry = 0;

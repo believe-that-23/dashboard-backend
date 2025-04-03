@@ -2,19 +2,9 @@
 Copyright (c) 2017, ZOHO CORPORATION
 License: MIT
 */
-require('dotenv').config();
-
-const CLIENT_ID = process.env.CLIENT_ID;
-const CLIENT_SECRET = process.env.CLIENT_SECRET;
-const DEVELOPER_TOKEN = process.env.DEVELOPER_TOKEN;
-const CUSTOMER_ID = process.env.CUSTOMER_ID;
-const REFRESH_TOKEN = process.env.REFRESH_TOKEN;
-const ZOHO_API = process.env.ZOHO_API;
-
 var fs = require('fs');
 var path = require('path');
 var express = require('express');
-const cors = require('cors');
 var bodyParser = require('body-parser');
 var errorHandler = require('errorhandler');
 var morgan = require('morgan');
@@ -22,18 +12,15 @@ var serveIndex = require('serve-index');
 var https = require('https');
 var chalk = require('chalk');
 var axios = require('axios');
-const { send } = require('process');
 const { fetchAds } = require('./googleAds');
-
-
+const { getAdInsights } = require('./facebook_Ads');
 
 process.env.PWD = process.env.PWD || process.cwd();
 
 
 var expressApp = express();
-var port = process.env.PORT || 5000;
+var port = 5000;
 
-expressApp.use(cors());
 expressApp.set('port', port);
 expressApp.use(morgan('dev'));
 expressApp.use(bodyParser.json());
@@ -42,12 +29,12 @@ expressApp.use(errorHandler());
 
 
 expressApp.use('/', function (req, res, next) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    next();
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  next();
 });
 
 expressApp.get('/plugin-manifest.json', function (req, res) {
-    res.sendfile('plugin-manifest.json');
+  res.sendfile('plugin-manifest.json');
 });
 
 expressApp.use('/app', express.static('app'));
@@ -55,161 +42,257 @@ expressApp.use('/app', serveIndex('app'));
 
 
 expressApp.get('/', function (req, res) {
-    res.redirect('/app');
+  res.redirect('/app');
 });
 
 
 
 expressApp.get('/app/leads/:startDate/:endDate', async function (req, res) {
-    console.log("req object: ", req.params);
-    // console.log("dates in backend: ", startDate, endDate)
-    const start = new Date(req.params.startDate);
-    const end = new Date(req.params.endDate);
+  const start = new Date(req.params.startDate);
+  const end = new Date(req.params.endDate);
 
-    const response = await axios.get(process.env.ZOHO_API);
-    // console.log(response);
-    const output = JSON.parse(response.data.details.output);
-    const leads = output.leads_data;
+  let fbAds = [];
+  try {
+    fbAds = await getAdInsights(req.params.startDate, req.params.endDate);
+  } catch (err) {
+    console.log("Facebook Ads Error:", err);
+  }
 
-    const dateMap = {};
+  const response = await axios.get('https://www.zohoapis.in/crm/v7/functions/getdata/actions/execute?auth_type=apikey&zapikey=1003.d54f68d40970d21ec80e8106b205b246.02bd5138f491e2860d5ffeabd4b09dc9');
+  const output = JSON.parse(response.data.details.output);
+  const leads = output.leads_data;
 
-    let total_cost_google = 0;
-    let total_cost_facebook = 0;
-    let meetings_done = 0;
-    let qualified = 0;
-    let future_qualified = 0;
-    let leads_count = 0;
-    let converted = 0;
-    let google_clicks = 0;
-    const ads = await fetchAds();
+  const dateMap = {};
+  const fbDateMap = {};
 
+  // Google Counters
+  let total_cost_google = 0;
+  let google_clicks = 0;
+  let meetings_done_google = 0;
+  let qualified_google = 0;
+  let future_qualified_google = 0;
+  let leads_count_google = 0;
+  let converted_google = 0;
 
-    for (let x of leads) {
-        const lead_date = new Date(x.date);
-        if (start <= lead_date && end >= lead_date) {
-            const dateStr = lead_date.toISOString().split('T')[0];
-            if (!dateMap[dateStr]) {
-                dateMap[dateStr] = {
-                    budget: 0,
-                    meetings_done: 0,
-                    qualified: 0,
-                    future_qualified: 0,
-                    leads_count: 0,
-                    converted: 0
-                };
-            }
-            if (x.source == 'Google AdWords') {
-                if (x.mobile?.length > 9 && x.mobile?.length < 14) {
-                    dateMap[dateStr].leads_count++;
-                    leads_count++;
-                }
-                if (x.iss == "Meeting Done") {
-                    dateMap[dateStr].meetings_done++;
-                    meetings_done++;
-                }
-                if (x.qs == "Qualified") {
-                    dateMap[dateStr].qualified++;
-                    qualified++;
-                }
-                if (x.qs == "Future Qualified") {
-                    dateMap[dateStr].future_qualified++;
-                    future_qualified++;
-                }
-                if (x.converted) {
-                    dateMap[dateStr].converted++;
-                    converted++;
-                }
-            }
+  // Facebook Counters
+  let total_cost_facebook = 0;
+  let facebook_clicks = 0;
+  let meetings_done_facebook = 0;
+  let qualified_facebook = 0;
+  let future_qualified_facebook = 0;
+  let leads_count_facebook = 0;
+  let converted_facebook = 0;
+
+  const googleAds = await fetchAds();
+
+  for (let x of leads) {
+    const lead_date = new Date(x.date);
+    const dateStr = lead_date.toISOString().split('T')[0];
+    if (start <= lead_date && end >= lead_date) {
+      if (x.source === 'Google AdWords') {
+        if (!dateMap[dateStr]) {
+          dateMap[dateStr] = {
+            budget: 0,
+            meetings_done: 0,
+            qualified: 0,
+            future_qualified: 0,
+            leads_count: 0,
+            converted: 0,
+            google_clicks: 0
+          };
         }
-    }
-
-    let cnt = 0;
-    console.log("ads data: ");
-    for (let y of ads) {
-        let ad_date = new Date(y.segments.date);
-        if (start <= ad_date && end >= ad_date) {
-            const dateStr = ad_date.toISOString().split('T')[0];
-            if (!dateMap[dateStr]) {
-                dateMap[dateStr] = {
-                    budget: 0,
-                    meetings_done: 0,
-                    qualified: 0,
-                    leads_count: 0,
-                    google_clicks: 0
-                };
-            }
-            let cost = 1.00 * y.metrics.costMicros / 1000000;
-
-            if (cost != null) {
-                dateMap[dateStr].budget += cost;
-                total_cost_google += cost;
-            }
-
-            if (y.metrics.clicks) {
-                google_clicks += y.metrics.clicks;
-                dateMap[dateStr].google_clicks += y.metrics.clicks;
-            }
-
-
+        if (x.mobile?.length > 9 && x.mobile?.length < 14) {
+          dateMap[dateStr].leads_count++;
+          leads_count_google++;
         }
+        if (x.iss === "Meeting Done") {
+          dateMap[dateStr].meetings_done++;
+          meetings_done_google++;
+        }
+        if (x.qs === "Qualified") {
+          dateMap[dateStr].qualified++;
+          qualified_google++;
+        }
+        if (x.qs === "Future Qualified") {
+          dateMap[dateStr].future_qualified++;
+          future_qualified_google++;
+        }
+        if (x.converted) {
+          dateMap[dateStr].converted++;
+          converted_google++;
+        }
+      } else if (x.source === 'Meta Ads') {
+        if (!fbDateMap[dateStr]) {
+          fbDateMap[dateStr] = {
+            budget: 0,
+            meetings_done: 0,
+            qualified: 0,
+            future_qualified: 0,
+            leads_count: 0,
+            converted: 0,
+            facebook_clicks: 0
+          };
+        }
+        if (x.mobile?.length > 9 && x.mobile?.length < 14) {
+          fbDateMap[dateStr].leads_count++;
+          leads_count_facebook++;
+        }
+        if (x.iss === "Meeting Done") {
+          fbDateMap[dateStr].meetings_done++;
+          meetings_done_facebook++;
+        }
+        if (x.qs === "Qualified") {
+          fbDateMap[dateStr].qualified++;
+          qualified_facebook++;
+        }
+        if (x.qs === "Future Qualified") {
+          fbDateMap[dateStr].future_qualified++;
+          future_qualified_facebook++;
+        }
+        if (x.converted) {
+          fbDateMap[dateStr].converted++;
+          converted_facebook++;
+        }
+      }
     }
+  }
 
-    const labels = Object.keys(dateMap).sort();
-    const budgetData = labels.map(date => dateMap[date].budget);
-    const meetingsData = labels.map(date => dateMap[date].meetings_done);
-    const qualifiedData = labels.map(date => dateMap[date].qualified);
-    const leadsData = labels.map(date => dateMap[date].leads_count);
-
-
-    let cpl = 0;
-    if (leads_count > 0) {
-        cpl = total_cost_google / leads_count;
+  // Google Ads cost + clicks
+  for (let y of googleAds) {
+    const ad_date = new Date(y.segments.date);
+    const dateStr = ad_date.toISOString().split('T')[0];
+    if (start <= ad_date && end >= ad_date) {
+      if (!dateMap[dateStr]) {
+        dateMap[dateStr] = {
+          budget: 0,
+          meetings_done: 0,
+          qualified: 0,
+          future_qualified: 0,
+          leads_count: 0,
+          converted: 0,
+          google_clicks: 0
+        };
+      }
+      const cost = (1.0 * y.metrics.costMicros) / 1000000;
+      if (cost != null) {
+        dateMap[dateStr].budget += cost;
+        total_cost_google += cost;
+      }
+      if (y.metrics.clicks) {
+        google_clicks += y.metrics.clicks;
+        dateMap[dateStr].google_clicks += y.metrics.clicks;
+      }
     }
+  }
 
-    let cpm = 0;
-    if (meetings_done > 0) {
-        cpm = total_cost_google / meetings_done;
+  // Facebook Ads cost + clicks
+  for (let ad of fbAds) {
+    const adDate = new Date(ad.date_start);
+    const dateStr = adDate.toISOString().split('T')[0];
+    if (start <= adDate && end >= adDate) {
+      if (!fbDateMap[dateStr]) {
+        fbDateMap[dateStr] = {
+          budget: 0,
+          meetings_done: 0,
+          qualified: 0,
+          future_qualified: 0,
+          leads_count: 0,
+          converted: 0,
+          facebook_clicks: 0
+        };
+      }
+      const fbCost = parseFloat(ad.spend || "0");
+      const fbClicks = parseInt(ad.clicks || "0");
+      fbDateMap[dateStr].budget += fbCost;
+      fbDateMap[dateStr].facebook_clicks += fbClicks;
+      total_cost_facebook += fbCost;
+      facebook_clicks += fbClicks;
     }
+  }
 
-    let lpq = 0;
-    if (qualified > 0) {
-        lpq = leads_count / qualified;
-    }
+  const labels = Object.keys({ ...dateMap, ...fbDateMap }).sort();
 
-    let lpc = 0;
-    if (converted > 0) {
-        lpc = total_cost_google / converted;
-    }
+  // Google data arrays
+  const google_budgetData = labels.map(date => dateMap[date]?.budget || 0);
+  const google_meetingsData = labels.map(date => dateMap[date]?.meetings_done || 0);
+  const google_qualifiedData = labels.map(date => dateMap[date]?.qualified || 0);
+  const google_leadsData = labels.map(date => dateMap[date]?.leads_count || 0);
+  const google_convertedData = labels.map(date => dateMap[date]?.converted || 0);
 
-    const sendData = {
-        google_budget: total_cost_google,
-        facebook_budget: total_cost_facebook,
-        // budget: total_cost,
-        leads: leads_count,
-        qualified,
-        future_qualified,
-        converted,
-        meetings_done,
-        cpl,
-        cpm,
-        lpq,
-        lpc,
-        labels,
-        budgetData,
-        meetingsData,
-        qualifiedData,
-        leadsData
-    }
+  // Facebook data arrays
+  const facebook_budgetData = labels.map(date => fbDateMap[date]?.budget || 0);
+  const facebook_meetingsData = labels.map(date => fbDateMap[date]?.meetings_done || 0);
+  const facebook_qualifiedData = labels.map(date => fbDateMap[date]?.qualified || 0);
+  const facebook_leadsData = labels.map(date => fbDateMap[date]?.leads_count || 0);
+  const facebook_convertedData = labels.map(date => fbDateMap[date]?.converted || 0);
 
-    res.json(sendData);
+  // Calculated Metrics
+  const cpl_google = leads_count_google ? total_cost_google / leads_count_google : 0;
+  const cpm_google = meetings_done_google ? total_cost_google / meetings_done_google : 0;
+  const lpq_google = qualified_google ? leads_count_google / qualified_google : 0;
+  const lpc_google = converted_google ? total_cost_google / converted_google : 0;
 
-})
+  const cpl_facebook = leads_count_facebook ? total_cost_facebook / leads_count_facebook : 0;
+  const cpm_facebook = meetings_done_facebook ? total_cost_facebook / meetings_done_facebook : 0;
+  const lpq_facebook = qualified_facebook ? leads_count_facebook / qualified_facebook : 0;
+  const lpc_facebook = converted_facebook ? total_cost_facebook / converted_facebook : 0;
+
+  // Send final response
+  const sendData = {
+    labels,
+
+    // Google
+    google_budget: total_cost_google,
+    google_clicks,
+    google_leads: leads_count_google,
+    google_qualified: qualified_google,
+    google_future_qualified: future_qualified_google,
+    google_converted: converted_google,
+    google_meetings_done: meetings_done_google,
+    cpl_google,
+    cpm_google,
+    lpq_google,
+    lpc_google,
+    google_budgetData,
+    google_meetingsData,
+    google_qualifiedData,
+    google_leadsData,
+    google_convertedData,
+
+    // Facebook
+    facebook_budget: total_cost_facebook,
+    facebook_clicks,
+    facebook_leads: leads_count_facebook,
+    facebook_qualified: qualified_facebook,
+    facebook_future_qualified: future_qualified_facebook,
+    facebook_converted: converted_facebook,
+    facebook_meetings_done: meetings_done_facebook,
+    cpl_facebook,
+    cpm_facebook,
+    lpq_facebook,
+    lpc_facebook,
+    facebook_budgetData,
+    facebook_meetingsData,
+    facebook_qualifiedData,
+    facebook_leadsData,
+    facebook_convertedData
+  };
+
+  res.json(sendData);
+});
+
+
 
 var options = {
-    key: fs.readFileSync(process.env.SSL_KEY_PATH),
-    cert: fs.readFileSync(process.env.SSL_CERT_PATH),
+  key: fs.readFileSync('./key.pem'),
+  cert: fs.readFileSync('./cert.pem')
 };
 
-expressApp.listen(port, () => {
-    console.log(chalk.green(`Zet running on http://localhost:${port}`));
+https.createServer(options, expressApp).listen(port, function () {
+  console.log(chalk.green('Zet running at ht' + 'tps://127.0.0.1:' + port));
+  console.log(chalk.bold.cyan("Note: Please enable the host (https://127.0.0.1:" + port + ") in a new tab and authorize the connection by clicking Advanced->Proceed to 127.0.0.1 (unsafe)."));
+}).on('error', function (err) {
+  if (err.code === 'EADDRINUSE') {
+    console.log(chalk.bold.red(port + " port is already in use"));
+  }
 });
