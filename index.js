@@ -12,6 +12,7 @@ var serveIndex = require('serve-index');
 var https = require('https');
 var chalk = require('chalk');
 var axios = require('axios');
+const { send } = require('process');
 const { fetchAds } = require('./googleAds');
 const { getAdInsights } = require('./facebook_Ads');
 
