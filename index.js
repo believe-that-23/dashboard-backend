@@ -46,9 +46,67 @@ expressApp.get('/', function (req, res) {
   res.redirect('/app');
 });
 
+function getAllDatesInRange(start, end) {
+  const dates = [];
+  const current = new Date(start);
+  while (current <= end) {
+    dates.push(current.toISOString().split('T')[0]);
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
+}
 
+// expressApp.get('/app/fresh', async (req, res) => {
+//   const data = await axios.get('https://buildx-org.myfreshworks.com/crm/sales/');
+//   console.log("data from fresherworks: ", data);
+// })
+let response;
+expressApp.get('/app/leads/meetings/:startDate/:endDate', async function (req, res) {
+  console.log('meetings date: ', req.params);
+  if (!response)
+    response = await axios.get('https://www.zohoapis.in/crm/v7/functions/getdata/actions/execute?auth_type=apikey&zapikey=1003.d54f68d40970d21ec80e8106b205b246.02bd5138f491e2860d5ffeabd4b09dc9');
+  const start = new Date(req.params.startDate);
+  const end = new Date(req.params.endDate);
+  const output = JSON.parse(response.data.details.output);
+  const google_meetings = output.google_meetings_data;
+  const fb_meetings = output.facebook_meetings_data;
+
+  let google_meeting = 0;
+  let facebook_meeting = 0;
+
+  console.log("data in meetings api: ", google_meetings, fb_meetings);
+
+  // Meetings Data
+  if (Array.isArray(google_meetings)) {
+    google_meetings.forEach(item => {
+      const cur_date = new Date(item);
+      if (start <= cur_date && end >= cur_date) {
+        google_meeting++;
+      }
+    });
+  }
+
+  if (Array.isArray(fb_meetings)) {
+    for (let x of fb_meetings) {
+      const cur_date = new Date(x);
+      if (start <= cur_date && end >= cur_date) {
+        facebook_meeting++;
+      }
+    }
+  }
+  
+
+  const respData = {
+    google_meeting,
+    facebook_meeting
+  }
+
+  res.json(respData);
+
+});
 
 expressApp.get('/app/leads/:startDate/:endDate', async function (req, res) {
+
   const start = new Date(req.params.startDate);
   const end = new Date(req.params.endDate);
 
@@ -59,7 +117,7 @@ expressApp.get('/app/leads/:startDate/:endDate', async function (req, res) {
     console.log("Facebook Ads Error:", err);
   }
 
-  const response = await axios.get('https://www.zohoapis.in/crm/v7/functions/getdata/actions/execute?auth_type=apikey&zapikey=1003.d54f68d40970d21ec80e8106b205b246.02bd5138f491e2860d5ffeabd4b09dc9');
+  response = await axios.get('https://www.zohoapis.in/crm/v7/functions/getdata/actions/execute?auth_type=apikey&zapikey=1003.d54f68d40970d21ec80e8106b205b246.02bd5138f491e2860d5ffeabd4b09dc9');
   const output = JSON.parse(response.data.details.output);
   const leads = output.leads_data;
 
@@ -75,6 +133,7 @@ expressApp.get('/app/leads/:startDate/:endDate', async function (req, res) {
   let leads_count_google = 0;
   let converted_google = 0;
 
+
   // Facebook Counters
   let total_cost_facebook = 0;
   let facebook_clicks = 0;
@@ -84,12 +143,14 @@ expressApp.get('/app/leads/:startDate/:endDate', async function (req, res) {
   let leads_count_facebook = 0;
   let converted_facebook = 0;
 
+
+
   const googleAds = await fetchAds(req.params.startDate, req.params.endDate);
 
   for (let x of leads) {
     const lead_date = new Date(x.date);
     const dateStr = lead_date.toISOString().split('T')[0];
-    if (start <= lead_date && lead_date <= end) {
+    if (start <= lead_date && end >= lead_date) {
       if (x.source === 'Google AdWords' || !x.source) {
         if (!dateMap[dateStr]) {
           dateMap[dateStr] = {
@@ -118,7 +179,7 @@ expressApp.get('/app/leads/:startDate/:endDate', async function (req, res) {
           dateMap[dateStr].future_qualified++;
           future_qualified_google++;
         }
-        if (x.converted) {
+        if (x.converted === "Converted") {
           dateMap[dateStr].converted++;
           converted_google++;
         }
@@ -150,7 +211,7 @@ expressApp.get('/app/leads/:startDate/:endDate', async function (req, res) {
           fbDateMap[dateStr].future_qualified++;
           future_qualified_facebook++;
         }
-        if (x.converted) {
+        if (x.converted === "Converted") {
           fbDateMap[dateStr].converted++;
           converted_facebook++;
         }
@@ -211,7 +272,7 @@ expressApp.get('/app/leads/:startDate/:endDate', async function (req, res) {
     }
   }
 
-  const labels = Object.keys({ ...dateMap, ...fbDateMap }).sort();
+  const labels = getAllDatesInRange(start, end);
 
   // Google data arrays
   const google_budgetData = labels.map(date => dateMap[date]?.budget || 0);
@@ -233,6 +294,7 @@ expressApp.get('/app/leads/:startDate/:endDate', async function (req, res) {
   const lpq_google = qualified_google ? leads_count_google / qualified_google : 0;
   const lpc_google = converted_google ? total_cost_google / converted_google : 0;
 
+
   const cpl_facebook = leads_count_facebook ? total_cost_facebook / leads_count_facebook : 0;
   const cpm_facebook = meetings_done_facebook ? total_cost_facebook / meetings_done_facebook : 0;
   const lpq_facebook = qualified_facebook ? leads_count_facebook / qualified_facebook : 0;
@@ -241,8 +303,6 @@ expressApp.get('/app/leads/:startDate/:endDate', async function (req, res) {
   // Send final response
   const sendData = {
     labels,
-
-    // Google
     google_budget: total_cost_google,
     google_clicks,
     google_leads: leads_count_google,
@@ -281,8 +341,6 @@ expressApp.get('/app/leads/:startDate/:endDate', async function (req, res) {
 
   res.json(sendData);
 });
-
-
 
 var options = {
   key: fs.readFileSync('./key.pem'),
